@@ -47,6 +47,30 @@
 - Charts: the 2020-2021 zoom adds the EWMA normal line and its breaches; the
   per-year chart shows all five models.
 
+### Block 5: EWMA lambda sensitivity
+- `R/ewma_sensitivity.R` covers lambda 0.90, 0.92, 0.94, 0.95, 0.96, 0.966,
+  0.97, 0.977, 0.98 and 0.99, each with the normal and the Student-t (df 5)
+  multipliers. The five main models are unchanged; lambda 0.94 is checked
+  to reproduce them.
+- `output/ewma_lambda_sensitivity.csv`: for each lambda and multiplier,
+  - half-life `log(0.5) / log(lambda)`;
+  - total breaches and breach rate;
+  - the Kupiec test;
+  - minimum and maximum breaches in any calendar year.
+- Out-of-sample check (`output/ewma_lambda_out_of_sample.csv`):
+  - lambda is chosen on 2015-2019 only, as the one with breaches closest to
+    expected, then tested on 2020-2025;
+  - ties go to the higher in-sample Kupiec p-value, then to the lambda
+    closest to 0.94;
+  - both multipliers had a three-way tie, so the tie-break decided the
+    choice. `output/ewma_lambda_out_of_sample_candidates.csv` lists every
+    candidate's 2020-2025 result (for reference only, not used in the
+    choice).
+- `figures/ewma_lambda_sensitivity.png`: total breaches against half-life
+  (log scale) for both multipliers, with lambda on the top axis. Reference
+  lines show the expected 27.66 and the rolling 250-day results (normal,
+  Student-t, historical).
+
 ## Log
 
 - 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
@@ -76,7 +100,10 @@
 - More models (not started on purpose): filtered historical simulation,
   GARCH(1,1), a t distribution with fitted rather than fixed df.
 - EWMA choices to revisit: the seed (sample variance vs mean of squared
-  returns) and lambda (0.94 is the RiskMetrics default, not fitted).
+  returns). Lambda selection by breach count is coarse: counts move by only
+  a few breaches across lambdas, so ties are common. A smoother criterion
+  (e.g. a likelihood or quantile loss on 2015-2019) would avoid relying on a
+  tie-break.
 - Decide whether to commit a frozen copy of `output/var_forecasts.csv`.
   Yahoo revises adjusted prices, so results can drift slightly between
   downloads.
