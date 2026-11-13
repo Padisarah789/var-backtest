@@ -30,3 +30,6 @@ for (d in c("2020-03-12", "2020-03-16")) hand_check_ewma(ret, fc, d)
 
 bt <- run_backtest(fc)
 run_charts(bt$fc, bt$by_year)
+
+source(file.path("R", "ewma_sensitivity.R"))
+run_ewma_sensitivity(ret, bt$fc)
