@@ -26,11 +26,33 @@
 - `.gitignore`: figures and backtest tables are committed. Raw prices, the
   daily forecast series and the quality report stay local.
 
+### Block 4: three more VaR models
+- `R/var_models.R` now has five models, all with no look-ahead:
+  - historical;
+  - normal;
+  - rolling Student-t: same rolling mean and sd as the normal model, with
+    multiplier `-qt(0.01, 5) * sqrt(3/5)` = 2.606464 (t rescaled to unit
+    variance);
+  - EWMA normal: `v_t = 0.94 v_{t-1} + 0.06 r_{t-1}^2`, mean taken as zero,
+    multiplier `qnorm(0.99)`;
+  - EWMA Student-t: the same EWMA volatility with the t multiplier.
+  - The EWMA seed is the sample variance of the first 250 returns
+    (2013-06-04 onwards), used as the forecast for the 251st day. That is
+    149 days before the first forecast, so the seed's remaining weight is
+    about 1e-4.
+- Backtest tables, the Kupiec test and per-year counts cover all five models.
+- `output/backtest_t_df_sensitivity.csv`: both t models with df 4, 5 and 8.
+- `R/hand_check.R`: `hand_check_ewma()` prints yesterday's EWMA variance and
+  return, today's EWMA variance, and all five VaRs.
+- Charts: the 2020-2021 zoom adds the EWMA normal line and its breaches; the
+  per-year chart shows all five models.
+
 ## Next
 
 1. **Independence of breaches.** Christoffersen (1998) test for independence
-   and conditional coverage. Kupiec checks only how many breaches there are,
-   not whether they bunch together.
+   and conditional coverage, for all five models. Kupiec checks only how many
+   breaches there are, not whether they bunch together. This matters most for
+   comparing the rolling-window models with the EWMA ones.
 2. **Kupiec per year.** The per-year counts are already computed; add the
    test statistic and p-value per year, noting that about 2.5 expected
    breaches a year gives the test very little power.
@@ -46,8 +68,10 @@
 
 ## Later / open questions
 
-- More models (not started on purpose): EWMA / RiskMetrics volatility,
-  filtered historical simulation, Student-t.
+- More models (not started on purpose): filtered historical simulation,
+  GARCH(1,1), a t distribution with fitted rather than fixed df.
+- EWMA choices to revisit: the seed (sample variance vs mean of squared
+  returns) and lambda (0.94 is the RiskMetrics default, not fitted).
 - Decide whether to commit a frozen copy of `output/var_forecasts.csv`.
   Yahoo revises adjusted prices, so results can drift slightly between
   downloads.
