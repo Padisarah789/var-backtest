@@ -47,6 +47,11 @@
 - Charts: the 2020-2021 zoom adds the EWMA normal line and its breaches; the
   per-year chart shows all five models.
 
+## Log
+
+- 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
+- 2026-11-13: Per-year breaches: rolling models cluster in 2018, 2020 and 2022; EWMA is evenly spread at about twice the expected rate.
+
 ## Next
 
 1. **Independence of breaches.** Christoffersen (1998) test for independence
