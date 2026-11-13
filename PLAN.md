@@ -1,7 +1,8 @@
 # Plan
 
-## Done (core)
+## Done
 
+### Block 1: core
 - Project setup: folders, `.gitignore`, package versions locked with renv.
 - `R/download.R`: daily SPY and AGG prices from Yahoo, 2013-06-03 to 2025-12-31.
 - `R/returns.R`: daily simple total returns; 60/40 portfolio rebalanced daily.
@@ -12,26 +13,41 @@
 - `R/quality_report.R` and `R/hand_check.R`: data checks and a printout for
   checking individual dates by hand.
 
+### Block 3: backtest
+- `R/backtest.R`: a breach is a day with `-ret_port > VaR` (strictly
+  greater). Per model: total breaches, breach rate, expected count, binomial
+  standard deviation, and the Kupiec proportion-of-failures test (likelihood
+  ratio, p-value, reject at 5%). Also breaches per calendar year and the 10
+  largest breaches by excess loss. Tables are in `output/backtest_*.csv`.
+- `R/charts.R`: three PNGs in `figures/`:
+  - full-period returns vs both VaR thresholds, with breaches marked;
+  - the same, zoomed to January 2020 to April 2021;
+  - breaches per year, with expected breaches drawn as a reference line.
+- `.gitignore`: figures and backtest tables are committed. Raw prices, the
+  daily forecast series and the quality report stay local.
+
 ## Next
 
-1. **Backtest.** Mark each day as an exception when `ret_port < -VaR`. Count
-   exceptions per model, in total and per year. With 2,766 days, about 27.7
-   are expected at 99%.
-2. **Kupiec test (unconditional coverage).** Likelihood-ratio test that the
-   exception rate equals 1%: `LR_uc ~ chi-squared(1)`. Report the statistic
-   and p-value per model, over the full sample and per year.
-   - Possible extension: Christoffersen tests for independence and
-     conditional coverage, to see whether exceptions cluster (as they would
-     in March 2020).
-   - Possible extension: Basel traffic-light zones on rolling 250-day
-     exception counts.
-3. **Plot.** Realised portfolio returns against `-VaR` for both models, with
-   exception days marked. Add a zoomed panel for February to April 2020.
+1. **Independence of breaches.** Christoffersen (1998) test for independence
+   and conditional coverage. Kupiec checks only how many breaches there are,
+   not whether they bunch together.
+2. **Kupiec per year.** The per-year counts are already computed; add the
+   test statistic and p-value per year, noting that about 2.5 expected
+   breaches a year gives the test very little power.
+3. **Basel traffic light.** Rolling 250-day breach counts mapped to the
+   green, yellow and red zones.
+4. **Unit tests** (`testthat`):
+   - VaR functions on small known inputs;
+   - Kupiec against a hand-computed value, including the edge cases of 0
+     breaches and n breaches;
+   - no window includes its own forecast date.
+5. **Write-up.** Interpret the results in the README (not done yet, on
+   purpose).
 
 ## Later / open questions
 
-- Unit tests (`testthat`) for the VaR functions on small known inputs, and a
-  test that no window includes its own forecast date.
+- More models (not started on purpose): EWMA / RiskMetrics volatility,
+  filtered historical simulation, Student-t.
 - Decide whether to commit a frozen copy of `output/var_forecasts.csv`.
   Yahoo revises adjusted prices, so results can drift slightly between
   downloads.
