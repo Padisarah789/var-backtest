@@ -57,13 +57,19 @@ report_forecasts <- function(fc, ret) {
   print(table(format(fc$date, "%Y")))
 
   cat("\nsummary of VaR series (positive = loss, % of portfolio value):\n")
-  s <- sapply(fc[, c("var_hist", "var_normal")], function(x)
+  s <- sapply(fc[, MODELS], function(x)
     100 * c(min = min(x), q25 = unname(quantile(x, 0.25)), median = median(x),
             mean = mean(x), q75 = unname(quantile(x, 0.75)), max = max(x), sd = sd(x)))
+  colnames(s) <- names(MODELS)
   print(round(s, 3))
-  cat(sprintf("date of max VaR: historical %s, normal %s\n",
-              fc$date[which.max(fc$var_hist)], fc$date[which.max(fc$var_normal)]))
-  cat(sprintf("correlation between the two series: %.3f\n", cor(fc$var_hist, fc$var_normal)))
+  cat("date of max VaR:\n")
+  print(sapply(MODELS, function(v) format(fc$date[which.max(fc[[v]])])))
+  cat("\ncorrelation between the VaR series:\n")
+  cm <- cor(fc[, MODELS]); dimnames(cm) <- list(names(MODELS), names(MODELS))
+  print(round(cm, 3))
+  cat(sprintf("EWMA burn-in: seeded %d returns before the first forecast date (seed weight left: %.1e)\n",
+              match(fc$date[1], ret$date) - WINDOW - 1,
+              EWMA_LAMBDA^(match(fc$date[1], ret$date) - WINDOW - 1)))
   cat(sprintf("days where historical VaR > normal VaR: %d of %d (%s)\n",
               sum(fc$var_hist > fc$var_normal), nrow(fc),
               pct(mean(fc$var_hist > fc$var_normal), 1)))
