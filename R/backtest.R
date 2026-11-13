@@ -10,8 +10,7 @@
 # days follows Binomial(n, p): mean n*p, standard deviation sqrt(n*p*(1-p)).
 
 source(file.path("R", "config.R"))
-
-MODELS <- c(historical = "var_hist", normal = "var_normal")
+# MODELS (model name -> VaR column) is defined in R/var_models.R.
 
 # Kupiec (1995) proportion-of-failures likelihood-ratio test.
 #   LR = -2 * [ log L(p) - log L(x/n) ]
@@ -77,15 +76,39 @@ largest_breaches <- function(fc, k = 10) {
   do.call(rbind, rows)
 }
 
+# Sensitivity of the two Student-t models to the degrees of freedom.
+# Re-uses the stored rolling mean/sd and EWMA sd, swapping only the multiplier.
+t_df_sensitivity <- function(fc, dfs = c(4, T_DF, 8), p = ALPHA) {
+  n <- nrow(fc)
+  rows <- list()
+  for (df in dfs) {
+    k <- z_student_t(df)
+    v <- list(student_t = var_parametric(fc$roll_mean, fc$roll_sd, k),
+              ewma_t    = var_parametric(0, fc$ewma_sd, k))
+    for (m in names(v)) {
+      x  <- sum(-fc$ret_port > v[[m]])
+      kp <- kupiec_pof(x, n, p)
+      rows[[length(rows) + 1]] <- data.frame(
+        model = m, df = df, multiplier = k, breaches = x, breach_rate = x / n,
+        expected_breaches = n * p, kupiec_lr = kp$statistic,
+        kupiec_p_value = kp$p_value, reject_at_5pct = kp$p_value < 0.05)
+    }
+  }
+  out <- do.call(rbind, rows)
+  out[order(out$model, out$df), ]
+}
+
 run_backtest <- function(fc) {
   fc <- add_breach_flags(fc)
   summ <- backtest_summary(fc)
   year <- breaches_by_year(fc)
   big  <- largest_breaches(fc)
+  sens <- t_df_sensitivity(fc)
 
   write.csv(summ, file.path(OUTPUT_DIR, "backtest_summary.csv"), row.names = FALSE)
   write.csv(year, file.path(OUTPUT_DIR, "backtest_breaches_by_year.csv"), row.names = FALSE)
   write.csv(big,  file.path(OUTPUT_DIR, "backtest_largest_breaches.csv"), row.names = FALSE)
+  write.csv(sens, file.path(OUTPUT_DIR, "backtest_t_df_sensitivity.csv"), row.names = FALSE)
 
   cat("\n===== BACKTEST: hand-check numbers =====\n")
   n <- nrow(fc)
@@ -94,7 +117,7 @@ run_backtest <- function(fc) {
               n * ALPHA, sqrt(n * ALPHA * (1 - ALPHA))))
   for (i in seq_len(nrow(summ))) {
     s <- summ[i, ]
-    cat(sprintf("%-10s breaches = %d | rate = %.4f%% | z = %.2f | Kupiec LR = %.4f, p = %.4g -> %s at 5%%\n",
+    cat(sprintf("%-11s breaches = %d | rate = %.4f%% | z = %.2f | Kupiec LR = %.4f, p = %.4g -> %s at 5%%\n",
                 s$model, s$breaches, 100 * s$breach_rate, s$z_score, s$kupiec_lr,
                 s$kupiec_p_value, if (s$reject_at_5pct) "REJECT" else "do not reject"))
   }
@@ -107,5 +130,12 @@ run_backtest <- function(fc) {
                          var = round(100 * var, 3), excess = round(100 * excess, 3))
   print(big_print, row.names = FALSE)
 
-  invisible(list(fc = fc, summary = summ, by_year = year, largest = big))
+  cat("\nSensitivity: Student-t models with different degrees of freedom\n")
+  print(transform(sens, multiplier = round(multiplier, 6),
+                  breach_rate = sprintf("%.3f%%", 100 * breach_rate),
+                  kupiec_lr = round(kupiec_lr, 3),
+                  kupiec_p_value = signif(kupiec_p_value, 3)), row.names = FALSE)
+
+  invisible(list(fc = fc, summary = summ, by_year = year, largest = big,
+                 t_sensitivity = sens))
 }

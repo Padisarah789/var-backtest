@@ -20,12 +20,13 @@ dir.create(OUTPUT_DIR, showWarnings = FALSE)
 ret <- build_returns()
 fc  <- forecast_var(ret)
 
-write.csv(fc[, c("date", "ret_port", "var_hist", "var_normal")],
+write.csv(fc[, c("date", "ret_port", MODELS)],
           file.path(OUTPUT_DIR, "var_forecasts.csv"), row.names = FALSE)
 
 run_quality_report(ret, fc)
 
 for (d in c("2019-06-03", "2020-03-16")) hand_check(ret, fc, d)
+for (d in c("2020-03-12", "2020-03-16")) hand_check_ewma(ret, fc, d)
 
 bt <- run_backtest(fc)
 run_charts(bt$fc, bt$by_year)
