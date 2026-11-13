@@ -75,6 +75,7 @@
 
 - 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
 - 2026-11-13: Per-year breaches: rolling models cluster in 2018, 2020 and 2022; EWMA is evenly spread at about twice the expected rate.
+- 2026-11-13: EWMA half-life sensitivity: normal multiplier flat at 62 to 67; t multiplier best near a 30-day half-life (40 to 41) but still rejected; out-of-sample result depends on tie-break.
 
 ## Next
 
