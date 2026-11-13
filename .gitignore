@@ -12,6 +12,12 @@
 data/raw/*
 !data/raw/.gitkeep
 
-# Generated results: re-create with run_all.R
+# Generated results: re-create with run_all.R.
+# The daily forecast series (derived from the raw prices) and the quality
+# report stay local; the backtest summary tables are committed.
 output/*
 !output/.gitkeep
+!output/backtest_*.csv
+
+# Charts are committed.
+!figures/
