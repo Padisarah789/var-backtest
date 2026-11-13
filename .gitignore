@@ -18,6 +18,7 @@ data/raw/*
 output/*
 !output/.gitkeep
 !output/backtest_*.csv
+!output/ewma_lambda_*.csv
 
 # Charts are committed.
 !figures/
