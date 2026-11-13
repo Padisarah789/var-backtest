@@ -1,0 +1,17 @@
+# R session files
+.Rhistory
+.RData
+.Rapp.history
+.Ruserdata
+.Rproj.user/
+
+# macOS
+.DS_Store
+
+# Downloaded market data: never committed (re-create with R/download.R)
+data/raw/*
+!data/raw/.gitkeep
+
+# Generated results: re-create with run_all.R
+output/*
+!output/.gitkeep
