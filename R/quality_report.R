@@ -70,6 +70,12 @@ report_forecasts <- function(fc, ret) {
   cat(sprintf("EWMA burn-in: seeded %d returns before the first forecast date (seed weight left: %.1e)\n",
               match(fc$date[1], ret$date) - WINDOW - 1,
               EWMA_LAMBDA^(match(fc$date[1], ret$date) - WINDOW - 1)))
+  i1 <- match(fc$date, ret$date)
+  gap <- abs(sqrt(ewma_variance(ret$ret_port, init_n = FHS_SEED_N)[i1]) / fc$ewma_sd - 1)
+  cat(sprintf("FHS standardisation EWMA (seeded on the first %d returns) vs main EWMA at forecast dates: max relative sd gap %.1e\n",
+              FHS_SEED_N, max(gap)))
+  cat(sprintf("floor VaR comes from EWMA normal on %d days and from historical on %d days\n",
+              sum(fc$var_ewma_normal >= fc$var_hist), sum(fc$var_ewma_normal < fc$var_hist)))
   cat(sprintf("days where historical VaR > normal VaR: %d of %d (%s)\n",
               sum(fc$var_hist > fc$var_normal), nrow(fc),
               pct(mean(fc$var_hist > fc$var_normal), 1)))

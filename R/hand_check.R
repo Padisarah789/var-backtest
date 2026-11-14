@@ -65,3 +65,37 @@ hand_check_ewma <- function(ret, fc, date) {
   cat(sprintf("realised portfolio return that day: %.6f (%.4f%%)\n",
               f$ret_port, 100 * f$ret_port))
 }
+
+# FHS and floor check: today's EWMA volatility, the three worst standardised
+# returns in the 250-day window (z = return / that day's EWMA volatility),
+# the FHS multiplier (minus the 3rd worst z), and the FHS and floor VaRs.
+hand_check_fhs <- function(ret, fc, date) {
+  date <- as.Date(date)
+  i <- match(date, ret$date)
+  if (is.na(i)) stop(date, " is not a trading day in the data")
+  f <- fc[fc$date == date, ]
+  rows <- window_rows(i)
+  vol <- sqrt(ewma_variance(ret$ret_port, init_n = FHS_SEED_N))
+  z <- ret$ret_port[rows] / vol[rows]
+  worst <- order(z)[1:3]
+  stopifnot(isTRUE(all.equal(-z[worst[3]], f$fhs_mult)))
+
+  cat(sprintf("\n===== FHS / floor hand check: forecast for %s =====\n", date))
+  cat(sprintf("today's EWMA volatility (lambda %.2f): %.6f (%.4f%%)\n",
+              EWMA_LAMBDA, f$ewma_sd, 100 * f$ewma_sd))
+  cat(sprintf("window: %s to %s (250 returns)\n", ret$date[rows[1]], ret$date[rows[250]]))
+  cat("three worst standardised returns in the window (z = return / EWMA vol for that day):\n")
+  print(data.frame(rank = 1:3, date = ret$date[rows][worst],
+                   ret_port = sprintf("%.6f", ret$ret_port[rows][worst]),
+                   ewma_vol = sprintf("%.6f", vol[rows][worst]),
+                   z = sprintf("%.4f", z[worst])), row.names = FALSE)
+  cat(sprintf("FHS multiplier (minus 3rd worst z): %.4f   [normal %.4f, Student-t df %d %.4f]\n",
+              f$fhs_mult, z_normal(), T_DF, z_student_t()))
+  cat(sprintf("FHS VaR   = %.4f * %.6f = %.6f (%.4f%%)\n",
+              f$fhs_mult, f$ewma_sd, f$var_fhs, 100 * f$var_fhs))
+  cat(sprintf("floor VaR = max(EWMA normal %.6f, historical %.6f) = %.6f (%.4f%%), from %s\n",
+              f$var_ewma_normal, f$var_hist, f$var_floor, 100 * f$var_floor,
+              if (f$var_ewma_normal >= f$var_hist) "EWMA normal" else "historical"))
+  cat(sprintf("realised portfolio return that day: %.6f (%.4f%%) -> FHS breach: %s, floor breach: %s\n",
+              f$ret_port, 100 * f$ret_port, -f$ret_port > f$var_fhs, -f$ret_port > f$var_floor))
+}

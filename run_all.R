@@ -27,9 +27,10 @@ run_quality_report(ret, fc)
 
 for (d in c("2019-06-03", "2020-03-16")) hand_check(ret, fc, d)
 for (d in c("2020-03-12", "2020-03-16")) hand_check_ewma(ret, fc, d)
+for (d in c("2020-03-12", "2020-03-16")) hand_check_fhs(ret, fc, d)
 
 bt <- run_backtest(fc)
-run_charts(bt$fc, bt$by_year)
+run_charts(bt$fc, bt$by_year, bt$severity)
 
 source(file.path("R", "ewma_sensitivity.R"))
 run_ewma_sensitivity(ret, bt$fc)
