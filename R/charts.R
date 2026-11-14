@@ -12,19 +12,32 @@ FIG_DIR <- "figures"
 # and text. A model keeps its colour in every chart. Identity is also carried
 # by marker shape, legends and count labels, never by colour alone.
 # The order is the validated slot order and also the bar order in the
-# per-year chart: normal-based models first, then the Student-t ones. The
-# zoom chart uses the first three slots, which also pass when every pair is
-# compared (not only neighbours).
+# per-year and mean-excess charts: normal-based models first, then the
+# Student-t ones, then FHS and the floor. Neighbouring slots pass the
+# colour-vision check; the zoom chart uses only the first three slots, which
+# also pass when every pair is compared (not only neighbours).
 MODEL_COL <- c(historical  = "#2a78d6",   # blue
                normal      = "#eb6834",   # orange
                ewma_normal = "#1baf7a",   # aqua
                student_t   = "#eda100",   # yellow
-               ewma_t      = "#e87ba4")   # magenta
+               ewma_t      = "#e87ba4",   # magenta
+               fhs         = "#008300",   # green
+               floor       = "#6250d6")   # violet
 MODEL_LABEL <- c(historical  = "Historical",
                  normal      = "Normal",
                  student_t   = "Student-t (df 5)",
                  ewma_normal = "EWMA normal",
-                 ewma_t      = "EWMA Student-t (df 5)")
+                 ewma_t      = "EWMA Student-t (df 5)",
+                 fhs         = "FHS (EWMA-filtered historical)",
+                 floor       = "Floor: max(EWMA normal, historical)")
+# Shorter two-line labels for a category axis.
+MODEL_AXIS <- c(historical  = "Historical",
+                normal      = "Normal",
+                ewma_normal = "EWMA\nnormal",
+                student_t   = "Student-t\n(df 5)",
+                ewma_t      = "EWMA\nStudent-t",
+                fhs         = "FHS",
+                floor       = "Floor")
 COL <- list(
   hist    = MODEL_COL[["historical"]],
   normal  = MODEL_COL[["normal"]],
@@ -139,7 +152,7 @@ plot_breaches_by_year <- function(by_year, file = "breaches_per_year.png") {
   cols <- unname(MODEL_COL[models])
   space <- c(0.12, 1)
 
-  open_png(file, width = 2800, height = 1300)
+  open_png(file, width = 3400, height = 1400, bottom = 7.4)
   ymax <- max(m, by_year$expected) + 1.5
   bp <- barplot(m, beside = TRUE, col = cols, border = COL$bg,
                 space = space, ylim = c(0, ymax), axes = FALSE,
@@ -169,14 +182,52 @@ plot_breaches_by_year <- function(by_year, file = "breaches_per_year.png") {
     "VaR breaches per calendar year, 60/40 SPY/AGG portfolio, 2015-2025",
     "Bars: breaches of each 1-day 99% VaR model. Dashed line: expected breaches if the model is correct (1% of trading days, about 2.5 a year)."
   )
-  bottom_legend(c(MODEL_LABEL[models], "Expected at 1% of days"), cex = 0.85,
-         col = c(cols, COL$text), pch = c(rep(15, length(models)), NA),
-         pt.cex = 1.8, lty = c(rep(NA, length(models)), 2),
-         lwd = c(rep(NA, length(models)), 2), seg.len = 2)
+  # Two legend rows: the first four models, then the rest and the reference.
+  first <- models[1:4]
+  rest  <- models[-(1:4)]
+  bottom_legend(MODEL_LABEL[first], cex = 0.85, inset = -0.19,
+                col = cols[1:4], pch = 15, pt.cex = 1.8, x.intersp = 1.1)
+  bottom_legend(c(MODEL_LABEL[rest], "Expected at 1% of days"), cex = 0.85, inset = -0.25,
+                col = c(cols[-(1:4)], COL$text), pch = c(rep(15, length(rest)), NA),
+                pt.cex = 1.8, lty = c(rep(NA, length(rest)), 2),
+                lwd = c(rep(NA, length(rest)), 2), seg.len = 2)
   dev.off()
 }
 
-run_charts <- function(fc, by_year) {
+# Mean excess (loss beyond VaR on breach days) per model, from
+# breach_severity(). Each bar is labelled with its value; the axis label
+# under it gives the number of breaches the mean is taken over.
+plot_mean_excess <- function(sev, file = "mean_excess_per_model.png") {
+  models <- names(MODEL_COL)
+  sev <- sev[match(models, sev$model), ]
+  y <- sev$mean_excess_pp
+  cols <- unname(MODEL_COL[models])
+
+  open_png(file, width = 2400, height = 1300, bottom = 4.6)
+  ymax <- max(y, na.rm = TRUE) * 1.15
+  at <- pretty(c(0, ymax))
+  bp <- barplot(y, col = cols, border = COL$bg, space = 0.45, ylim = c(0, max(at)),
+                axes = FALSE, names.arg = rep("", length(y)),
+                ylab = "Mean excess (percentage points)")
+  abline(h = at, col = COL$grid, lwd = 0.8)
+  axis(2, at = at, labels = sprintf("%.2f", at), lwd = 0)
+  barplot(y, col = cols, border = COL$bg, space = 0.45, axes = FALSE,
+          names.arg = rep("", length(y)), add = TRUE)
+  text(bp, y, labels = sprintf("%.3f", y), pos = 3, cex = 0.85, col = COL$text)
+  par(xpd = NA)
+  text(bp, -0.06 * max(at), labels = MODEL_AXIS[models], cex = 0.85, col = COL$text,
+       adj = c(0.5, 1))
+  text(bp, -0.15 * max(at), labels = sprintf("%d breaches", sev$breaches),
+       cex = 0.75, col = COL$text2, adj = c(0.5, 1))
+
+  title_block(
+    "Mean loss beyond VaR on breach days, 60/40 SPY/AGG portfolio, 2015-2025",
+    "Excess = realised loss minus that day's 1-day 99% VaR, averaged over each model's breaches, in percentage points of portfolio value."
+  )
+  dev.off()
+}
+
+run_charts <- function(fc, by_year, severity) {
   plot_returns_var(fc, "returns_vs_var_full.png",
                    period_label = "2015-2025")
   plot_returns_var(fc, "returns_vs_var_2020_2021.png",
@@ -184,5 +235,6 @@ run_charts <- function(fc, by_year) {
                    period_label = "January 2020 to April 2021",
                    date_format = "%b %Y", by = "month", show_ewma = TRUE)
   plot_breaches_by_year(by_year)
+  plot_mean_excess(severity)
   message("charts saved to ", FIG_DIR, "/")
 }
