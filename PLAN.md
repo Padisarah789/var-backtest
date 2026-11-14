@@ -99,6 +99,24 @@
 - Charts: the per-year chart shows all seven models (green FHS, violet
   floor); new `figures/mean_excess_per_model.png`.
 
+### Day 5, block 2: breach clustering
+- `R/backtest.R`, for all seven models (`output/backtest_clustering.csv`):
+  - transition counts n00, n01, n10, n11 of the daily breach indicator over
+    consecutive forecast days (2,765 pairs);
+  - P(breach | no breach the day before) = n01 / (n00 + n01) and
+    P(breach | breach the day before) = n11 / (n10 + n11);
+  - Christoffersen (1998) independence LR and p-value (chi-squared, 1 df);
+  - conditional coverage = Kupiec LR (all 2,766 days) + independence LR,
+    p-value from chi-squared with 2 df.
+  - n11 = 0 is handled by taking 0 * log(0) = 0 in the likelihood, with no
+    change to the counts. No model has n11 = 0 in this sample (n11 is 4 to 9).
+- Clustering share: breaches that came 1 to 5 trading days after the
+  previous breach, divided by all breaches (the first breach can never
+  count). Reference if breaches are independent at 1%: 1 - 0.99^5 = 4.9%.
+- `output/final_summary.csv` (committed): one row per model with breaches,
+  Kupiec p, independence p, conditional coverage p, share clustered,
+  average VaR, mean excess and total excess.
+
 ## Log
 
 - 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
@@ -107,21 +125,19 @@
 
 ## Next
 
-1. **Independence of breaches.** Christoffersen (1998) test for independence
-   and conditional coverage, for all seven models. Kupiec checks only how many
-   breaches there are, not whether they bunch together. This matters most for
-   comparing the rolling-window models with the EWMA ones.
-2. **Kupiec per year.** The per-year counts are already computed; add the
+1. **Kupiec per year.** The per-year counts are already computed; add the
    test statistic and p-value per year, noting that about 2.5 expected
    breaches a year gives the test very little power.
-3. **Basel traffic light.** Rolling 250-day breach counts mapped to the
+2. **Basel traffic light.** Rolling 250-day breach counts mapped to the
    green, yellow and red zones.
-4. **Unit tests** (`testthat`):
+3. **Unit tests** (`testthat`):
    - VaR functions on small known inputs;
    - Kupiec against a hand-computed value, including the edge cases of 0
      breaches and n breaches;
+   - Christoffersen independence on a hand-worked sequence, including
+     n11 = 0 and no breaches at all;
    - no window includes its own forecast date.
-5. **Write-up.** Interpret the results in the README (not done yet, on
+4. **Write-up.** Interpret the results in the README (not done yet, on
    purpose).
 
 ## Later / open questions
@@ -136,6 +152,10 @@
   a few breaches across lambdas, so ties are common. A smoother criterion
   (e.g. a likelihood or quantile loss on 2015-2019) would avoid relying on a
   tie-break.
+- Clustering tests: the independence test only looks at consecutive days
+  and n11 is small (4 to 9), so the chi-squared approximation is rough.
+  Options: a duration-based test (Christoffersen and Pelletier 2004) or
+  simulated p-values.
 - Decide whether to commit a frozen copy of `output/var_forecasts.csv`.
   Yahoo revises adjusted prices, so results can drift slightly between
   downloads.
