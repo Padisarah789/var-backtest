@@ -1,0 +1,6 @@
+"statistic","multiplier","date","share_of_days_above"
+"fhs_min",1.8737150876307,"2023-09-13",NA
+"fhs_median",3.06420302799506,NA,NA
+"fhs_max",4.30240516286494,"2018-10-11",NA
+"normal_fixed",2.32634787404084,NA,0.900939985538684
+"student_t_df5_fixed",2.60646356938428,NA,0.758857556037599

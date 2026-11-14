@@ -76,6 +76,42 @@ largest_breaches <- function(fc, k = 10) {
   do.call(rbind, rows)
 }
 
+# Severity of breaches: how far past VaR the losses went, per model.
+# Excess = loss - VaR on breach days, in percentage points of portfolio
+# value (a loss of 3.0% against a VaR of 2.5% is an excess of 0.5).
+# Average VaR is over all forecast days, also in % of portfolio value.
+breach_severity <- function(fc) {
+  rows <- lapply(names(MODELS), function(m) {
+    v <- fc[[MODELS[[m]]]]
+    b <- fc[[paste0("breach_", m)]]
+    ex <- 100 * (-fc$ret_port[b] - v[b])
+    has <- length(ex) > 0
+    data.frame(
+      model               = m,
+      avg_var_pct         = 100 * mean(v),
+      breaches            = sum(b),
+      mean_excess_pp      = if (has) mean(ex) else NA_real_,
+      median_excess_pp    = if (has) median(ex) else NA_real_,
+      largest_excess_pp   = if (has) max(ex) else NA_real_,
+      total_excess_pp     = sum(ex)
+    )
+  })
+  do.call(rbind, rows)
+}
+
+# FHS data-implied multiplier (minus the 3rd worst standardised return in
+# each window) over the forecast period, next to the fixed multipliers.
+fhs_multiplier_summary <- function(fc) {
+  k <- fc$fhs_mult
+  data.frame(
+    statistic = c("fhs_min", "fhs_median", "fhs_max",
+                  "normal_fixed", "student_t_df5_fixed"),
+    multiplier = c(min(k), median(k), max(k), z_normal(), z_student_t()),
+    date = c(format(fc$date[which.min(k)]), NA, format(fc$date[which.max(k)]), NA, NA),
+    share_of_days_above = c(NA, NA, NA, mean(k > z_normal()), mean(k > z_student_t()))
+  )
+}
+
 # Sensitivity of the two Student-t models to the degrees of freedom.
 # Re-uses the stored rolling mean/sd and EWMA sd, swapping only the multiplier.
 t_df_sensitivity <- function(fc, dfs = c(4, T_DF, 8), p = ALPHA) {
@@ -104,11 +140,18 @@ run_backtest <- function(fc) {
   year <- breaches_by_year(fc)
   big  <- largest_breaches(fc)
   sens <- t_df_sensitivity(fc)
+  sev  <- breach_severity(fc)
+  fhsm <- fhs_multiplier_summary(fc)
 
   write.csv(summ, file.path(OUTPUT_DIR, "backtest_summary.csv"), row.names = FALSE)
   write.csv(year, file.path(OUTPUT_DIR, "backtest_breaches_by_year.csv"), row.names = FALSE)
   write.csv(big,  file.path(OUTPUT_DIR, "backtest_largest_breaches.csv"), row.names = FALSE)
   write.csv(sens, file.path(OUTPUT_DIR, "backtest_t_df_sensitivity.csv"), row.names = FALSE)
+  write.csv(sev,  file.path(OUTPUT_DIR, "backtest_severity.csv"), row.names = FALSE)
+  write.csv(fhsm, file.path(OUTPUT_DIR, "backtest_fhs_multiplier.csv"), row.names = FALSE)
+
+  op <- options(width = 150)   # keep the seven-model tables on one line
+  on.exit(options(op))
 
   cat("\n===== BACKTEST: hand-check numbers =====\n")
   n <- nrow(fc)
@@ -122,8 +165,25 @@ run_backtest <- function(fc) {
                 s$kupiec_p_value, if (s$reject_at_5pct) "REJECT" else "do not reject"))
   }
 
-  cat("\nbreaches per calendar year:\n")
-  print(transform(year, expected = round(expected, 2)), row.names = FALSE)
+  cat("\nbreaches per calendar year (all seven models):\n")
+  yp <- year
+  names(yp) <- sub("_breaches$", "", names(yp))
+  yp$expected <- round(yp$expected, 2)
+  tot <- yp[1, ]
+  tot$year <- "total"
+  tot[, -1] <- lapply(yp[, -1], sum)
+  print(rbind(yp, tot), row.names = FALSE)
+
+  cat("\nbreach severity (VaR in % of portfolio, excess = loss - VaR in percentage points):\n")
+  print(transform(sev, avg_var_pct = round(avg_var_pct, 4),
+                  mean_excess_pp = round(mean_excess_pp, 4),
+                  median_excess_pp = round(median_excess_pp, 4),
+                  largest_excess_pp = round(largest_excess_pp, 4),
+                  total_excess_pp = round(total_excess_pp, 4)), row.names = FALSE)
+
+  cat("\nFHS data-implied multiplier over the forecast period:\n")
+  print(transform(fhsm, multiplier = round(multiplier, 6),
+                  share_of_days_above = round(share_of_days_above, 4)), row.names = FALSE)
 
   cat("\n10 largest breaches per model (returns, VaR and excess in %):\n")
   big_print <- transform(big, ret_port = round(100 * ret_port, 3),
@@ -137,5 +197,5 @@ run_backtest <- function(fc) {
                   kupiec_p_value = signif(kupiec_p_value, 3)), row.names = FALSE)
 
   invisible(list(fc = fc, summary = summ, by_year = year, largest = big,
-                 t_sensitivity = sens))
+                 t_sensitivity = sens, severity = sev, fhs_multiplier = fhsm))
 }
