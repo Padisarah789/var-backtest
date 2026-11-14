@@ -12,13 +12,15 @@
 source(file.path("R", "config.R"))
 # MODELS (model name -> VaR column) is defined in R/var_models.R.
 
+# a * log(b), with 0 * log(0) taken as 0 (the limit as a probability -> 0).
+xlogy <- function(a, b) if (a == 0) 0 else a * log(b)
+
 # Kupiec (1995) proportion-of-failures likelihood-ratio test.
 #   LR = -2 * [ log L(p) - log L(x/n) ]
 #   log L(q) = x * log(q) + (n - x) * log(1 - q)
 # LR is asymptotically chi-squared with 1 degree of freedom.
 # 0 * log(0) is taken as 0, so x = 0 or x = n are handled.
 kupiec_pof <- function(x, n, p = ALPHA) {
-  xlogy <- function(a, b) if (a == 0) 0 else a * log(b)
   loglik <- function(q) xlogy(x, q) + xlogy(n - x, 1 - q)
   lr <- -2 * (loglik(p) - loglik(x / n))
   list(statistic = lr, p_value = pchisq(lr, df = 1, lower.tail = FALSE))
@@ -112,6 +114,102 @@ fhs_multiplier_summary <- function(fc) {
   )
 }
 
+# ---- Clustering of breaches ---------------------------------------------
+
+# Transition counts of the daily breach indicator I_t over consecutive
+# forecast days t-1 -> t (n - 1 pairs for n days):
+#   n00: no breach -> no breach    n01: no breach -> breach
+#   n10: breach -> no breach       n11: breach -> breach
+transition_counts <- function(b) {
+  prev <- head(b, -1)
+  cur  <- tail(b, -1)
+  c(n00 = sum(!prev & !cur), n01 = sum(!prev & cur),
+    n10 = sum(prev & !cur),  n11 = sum(prev & cur))
+}
+
+# Christoffersen (1998) independence test (first-order Markov alternative).
+#   pi01 = n01 / (n00 + n01)   P(breach | no breach the day before)
+#   pi11 = n11 / (n10 + n11)   P(breach | breach the day before)
+#   pi   = (n01 + n11) / (n00 + n01 + n10 + n11)
+#   LR_ind = -2 [ log L(pi) - log L(pi01, pi11) ],  chi-squared, 1 df
+#   log L(pi)        = (n00 + n10) log(1 - pi) + (n01 + n11) log(pi)
+#   log L(pi01,pi11) = n00 log(1 - pi01) + n01 log(pi01)
+#                    + n10 log(1 - pi11) + n11 log(pi11)
+# n11 = 0: pi11 is estimated as 0 and the n11 * log(pi11) term is taken as
+# 0 * log(0) = 0 (its limit), so log L(pi01, pi11) stays finite and the test
+# is computed as usual, with no adjustment to the counts. The statistic is
+# then driven by pi01 vs pi only. If there is no day after a breach at all
+# (n10 + n11 = 0), pi11 is undefined; its terms are both 0 and drop out.
+christoffersen_ind <- function(n00, n01, n10, n11) {
+  pi01 <- if (n00 + n01 > 0) n01 / (n00 + n01) else NA_real_
+  pi11 <- if (n10 + n11 > 0) n11 / (n10 + n11) else NA_real_
+  pi   <- (n01 + n11) / (n00 + n01 + n10 + n11)
+  ll0 <- xlogy(n00 + n10, 1 - pi) + xlogy(n01 + n11, pi)
+  ll1 <- xlogy(n00, 1 - pi01) + xlogy(n01, pi01) +
+         xlogy(n10, 1 - pi11) + xlogy(n11, pi11)
+  lr <- max(0, -2 * (ll0 - ll1))   # clip tiny negative rounding error
+  list(statistic = lr, p_value = pchisq(lr, df = 1, lower.tail = FALSE),
+       pi01 = pi01, pi11 = pi11, pi = pi)
+}
+
+# Breaches that came within `window` trading days after the previous breach
+# (gap of 1 to `window` forecast days). The share's denominator is all
+# breaches, including each model's first breach, which can never count.
+clustered_breaches <- function(b, window = 5) {
+  pos <- which(b)
+  sum(diff(pos) <= window)
+}
+
+# Per model: transition counts, conditional breach probabilities, the
+# independence test, conditional coverage, and the 5-day clustering share.
+# Conditional coverage = Kupiec LR (all n days) + independence LR,
+# chi-squared with 2 df. (Christoffersen's original LR_cc computes the
+# unconditional part on the n - 1 transitions instead; the two differ only
+# through the first day.)
+clustering_tests <- function(fc, p = ALPHA, window = 5) {
+  n <- nrow(fc)
+  rows <- lapply(names(MODELS), function(m) {
+    b  <- fc[[paste0("breach_", m)]]
+    tc <- transition_counts(b)
+    ci <- christoffersen_ind(tc[["n00"]], tc[["n01"]], tc[["n10"]], tc[["n11"]])
+    kp <- kupiec_pof(sum(b), n, p)
+    lr_cc <- kp$statistic + ci$statistic
+    k <- clustered_breaches(b, window)
+    data.frame(
+      model             = m,
+      breaches          = sum(b),
+      n00 = tc[["n00"]], n01 = tc[["n01"]], n10 = tc[["n10"]], n11 = tc[["n11"]],
+      p_breach_after_no_breach = ci$pi01,
+      p_breach_after_breach    = ci$pi11,
+      p_breach_pooled          = ci$pi,
+      independence_lr   = ci$statistic,
+      independence_p    = ci$p_value,
+      kupiec_lr         = kp$statistic,
+      cond_coverage_lr  = lr_cc,
+      cond_coverage_p   = pchisq(lr_cc, df = 2, lower.tail = FALSE),
+      clustered_breaches = k,
+      share_clustered    = if (sum(b) > 0) k / sum(b) else NA_real_
+    )
+  })
+  do.call(rbind, rows)
+}
+
+# One row per model, pulling together the backtest tables.
+final_summary <- function(summ, clus, sev) {
+  stopifnot(identical(summ$model, clus$model), identical(summ$model, sev$model))
+  data.frame(
+    model           = summ$model,
+    breaches        = summ$breaches,
+    kupiec_p        = summ$kupiec_p_value,
+    independence_p  = clus$independence_p,
+    cond_coverage_p = clus$cond_coverage_p,
+    share_clustered = clus$share_clustered,
+    avg_var_pct     = sev$avg_var_pct,
+    mean_excess_pp  = sev$mean_excess_pp,
+    total_excess_pp = sev$total_excess_pp
+  )
+}
+
 # Sensitivity of the two Student-t models to the degrees of freedom.
 # Re-uses the stored rolling mean/sd and EWMA sd, swapping only the multiplier.
 t_df_sensitivity <- function(fc, dfs = c(4, T_DF, 8), p = ALPHA) {
@@ -142,6 +240,8 @@ run_backtest <- function(fc) {
   sens <- t_df_sensitivity(fc)
   sev  <- breach_severity(fc)
   fhsm <- fhs_multiplier_summary(fc)
+  clus <- clustering_tests(fc)
+  fin  <- final_summary(summ, clus, sev)
 
   write.csv(summ, file.path(OUTPUT_DIR, "backtest_summary.csv"), row.names = FALSE)
   write.csv(year, file.path(OUTPUT_DIR, "backtest_breaches_by_year.csv"), row.names = FALSE)
@@ -149,6 +249,8 @@ run_backtest <- function(fc) {
   write.csv(sens, file.path(OUTPUT_DIR, "backtest_t_df_sensitivity.csv"), row.names = FALSE)
   write.csv(sev,  file.path(OUTPUT_DIR, "backtest_severity.csv"), row.names = FALSE)
   write.csv(fhsm, file.path(OUTPUT_DIR, "backtest_fhs_multiplier.csv"), row.names = FALSE)
+  write.csv(clus, file.path(OUTPUT_DIR, "backtest_clustering.csv"), row.names = FALSE)
+  write.csv(fin,  file.path(OUTPUT_DIR, "final_summary.csv"), row.names = FALSE)
 
   op <- options(width = 150)   # keep the seven-model tables on one line
   on.exit(options(op))
@@ -185,6 +287,32 @@ run_backtest <- function(fc) {
   print(transform(fhsm, multiplier = round(multiplier, 6),
                   share_of_days_above = round(share_of_days_above, 4)), row.names = FALSE)
 
+  cat("\nbreach clustering: transition counts over consecutive forecast days (n - 1 = %d pairs)\n" |>
+        sprintf(n - 1))
+  cat("  p(breach | no breach yesterday) = n01 / (n00 + n01); p(breach | breach yesterday) = n11 / (n10 + n11)\n")
+  print(data.frame(model = clus$model, n00 = clus$n00, n01 = clus$n01, n10 = clus$n10, n11 = clus$n11,
+                   n00_n01 = clus$n00 + clus$n01, n10_n11 = clus$n10 + clus$n11,
+                   p_after_no_breach = sprintf("%.6f", clus$p_breach_after_no_breach),
+                   p_after_breach = sprintf("%.6f", clus$p_breach_after_breach),
+                   ind_lr = round(clus$independence_lr, 4),
+                   ind_p = signif(clus$independence_p, 4),
+                   cc_lr = round(clus$cond_coverage_lr, 4),
+                   cc_p = signif(clus$cond_coverage_p, 4)), row.names = FALSE)
+  cat("  models with n11 = 0 use 0 * log(0) = 0 in the likelihood (no change to the counts):",
+      if (any(clus$n11 == 0)) paste(clus$model[clus$n11 == 0], collapse = ", ") else "none", "\n")
+  cat(sprintf("\nbreaches within 5 trading days after a previous breach (reference: 1 - 0.99^5 = %.4f if breaches are independent at 1%%):\n",
+              1 - (1 - ALPHA)^5))
+  print(data.frame(model = clus$model, breaches = clus$breaches,
+                   clustered = clus$clustered_breaches,
+                   share = sprintf("%.4f", clus$share_clustered)), row.names = FALSE)
+
+  cat("\n===== FINAL SUMMARY (output/final_summary.csv) =====\n")
+  print(transform(fin, kupiec_p = signif(kupiec_p, 4), independence_p = signif(independence_p, 4),
+                  cond_coverage_p = signif(cond_coverage_p, 4),
+                  share_clustered = round(share_clustered, 4), avg_var_pct = round(avg_var_pct, 4),
+                  mean_excess_pp = round(mean_excess_pp, 4), total_excess_pp = round(total_excess_pp, 4)),
+        row.names = FALSE)
+
   cat("\n10 largest breaches per model (returns, VaR and excess in %):\n")
   big_print <- transform(big, ret_port = round(100 * ret_port, 3),
                          var = round(100 * var, 3), excess = round(100 * excess, 3))
@@ -197,5 +325,6 @@ run_backtest <- function(fc) {
                   kupiec_p_value = signif(kupiec_p_value, 3)), row.names = FALSE)
 
   invisible(list(fc = fc, summary = summ, by_year = year, largest = big,
-                 t_sensitivity = sens, severity = sev, fhs_multiplier = fhsm))
+                 t_sensitivity = sens, severity = sev, fhs_multiplier = fhsm,
+                 clustering = clus, final = fin))
 }
