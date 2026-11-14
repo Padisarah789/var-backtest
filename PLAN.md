@@ -71,6 +71,34 @@
   lines show the expected 27.66 and the rolling 250-day results (normal,
   Student-t, historical).
 
+### Day 5, block 1: FHS, floor and breach severity
+- `R/var_models.R` adds two models; the five existing ones are unchanged
+  (checked: identical `var_forecasts.csv` columns and backtest rows).
+  - Filtered historical simulation (`fhs`): each past return is divided by
+    the EWMA (lambda 0.94) volatility forecast made for its day; the
+    multiplier is minus the type-1 1% quantile (3rd worst) of the previous
+    250 standardised returns; VaR = multiplier * today's EWMA volatility.
+  - Floor (`floor`): the larger of the EWMA normal VaR and the historical VaR.
+  - Standardisation needs EWMA volatilities from 2014-01-06 (row 150), but
+    the main EWMA starts at row 251. So the standardised returns use the
+    same lambda-0.94 recursion seeded on the sample variance of the first 50
+    returns (`FHS_SEED_N`). From the first forecast date on, its volatility
+    is within 1.7e-5 (relative) of the main EWMA. Today's volatility is the
+    main EWMA's, so the FHS multiplier compares directly with 2.326 and 2.606.
+- Backtest tables (summary, Kupiec, per-year, largest breaches) cover all
+  seven models; the console prints the full per-year table with totals.
+- `output/backtest_severity.csv`: per model, average VaR, breaches, and the
+  mean, median, largest and total excess (loss minus VaR on breach days, in
+  percentage points of portfolio value).
+- `output/backtest_fhs_multiplier.csv`: minimum, median and maximum of the
+  FHS multiplier (with dates), next to 2.326 and 2.606, and the share of
+  days the FHS multiplier is above each.
+- `R/hand_check.R`: `hand_check_fhs()` for 2020-03-12 and 2020-03-16 prints
+  today's EWMA volatility, the three worst standardised returns in the
+  window with their dates, the FHS multiplier, and the FHS and floor VaRs.
+- Charts: the per-year chart shows all seven models (green FHS, violet
+  floor); new `figures/mean_excess_per_model.png`.
+
 ## Log
 
 - 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
@@ -80,7 +108,7 @@
 ## Next
 
 1. **Independence of breaches.** Christoffersen (1998) test for independence
-   and conditional coverage, for all five models. Kupiec checks only how many
+   and conditional coverage, for all seven models. Kupiec checks only how many
    breaches there are, not whether they bunch together. This matters most for
    comparing the rolling-window models with the EWMA ones.
 2. **Kupiec per year.** The per-year counts are already computed; add the
@@ -98,8 +126,11 @@
 
 ## Later / open questions
 
-- More models (not started on purpose): filtered historical simulation,
-  GARCH(1,1), a t distribution with fitted rather than fixed df.
+- More models (not started on purpose): GARCH(1,1) (also as the filter for
+  FHS), a t distribution with fitted rather than fixed df.
+- FHS standardisation seed: the 50-return seed is a choice. An alternative
+  is to download earlier history so the main EWMA covers the first FHS
+  window, but that would change the EWMA seed of the existing models.
 - EWMA choices to revisit: the seed (sample variance vs mean of squared
   returns). Lambda selection by breach count is coarse: counts move by only
   a few breaches across lambdas, so ties are common. A smoother criterion
