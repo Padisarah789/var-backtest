@@ -117,6 +117,19 @@
   Kupiec p, independence p, conditional coverage p, share clustered,
   average VaR, mean excess and total excess.
 
+### Day 5, block 3: README
+- `README.md` assembled: Summary, Setup, Findings and Limitations taken
+  word for word from the findings draft; Method from the models draft
+  (grammar corrected only) plus technical details (quantile definition,
+  multipliers, EWMA and FHS start-up) and the tests; the final summary
+  table from `output/final_summary.csv`; five charts with captions; how to
+  run from a clean clone; repository structure.
+- Tested the "How to run" steps in a fresh clone (2026-11-17): `renv::restore`
+  and `run_all.R` ran without errors or warnings. The fresh Yahoo download
+  differed from the 2026-11-13 one by at most 2e-6 (relative) in adjusted
+  prices; every model's breach days were identical, and the README table
+  came out the same.
+
 ## Log
 
 - 2026-11-13: Five models backtested; only historical passes Kupiec; EWMA reduces crisis breaches but not the total; next: breach size and clustering.
@@ -137,8 +150,6 @@
    - Christoffersen independence on a hand-worked sequence, including
      n11 = 0 and no breaches at all;
    - no window includes its own forecast date.
-4. **Write-up.** Interpret the results in the README (not done yet, on
-   purpose).
 
 ## Later / open questions
 
